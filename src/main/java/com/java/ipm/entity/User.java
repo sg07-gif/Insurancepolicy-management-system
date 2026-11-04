@@ -3,6 +3,7 @@ package com.java.ipm.entity;
 import java.util.List;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.java.ipm.domain.Role;
 
@@ -18,6 +19,7 @@ public class User {
     @Column(unique = true, nullable= false)
     private String username;
     
+    @JsonIgnore // never expose the password hash in API responses
     @Column(nullable= false)
     private String password;
     

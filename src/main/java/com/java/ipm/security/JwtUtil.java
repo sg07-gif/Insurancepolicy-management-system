@@ -1,67 +1,66 @@
 package com.java.ipm.security;
 
-import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Component;
-import com.java.ipm.entity.User;
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import com.java.ipm.entity.User;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+
 @Component
 public class JwtUtil {
-    private final String SECRET_KEY = "QrSckOlEtsT3CfCfzrMJfJ3ndakIxFQYy7z+JfpNcNc="; // Replace with generated key
-    private final long EXPIRATION_TIME = 86400000; // 1 day
 
-    private final Key key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
+    private static final Logger log = LoggerFactory.getLogger(JwtUtil.class);
+
+    private final Key key;
+    private final long expirationMs;
+
+    public JwtUtil(@Value("${jwt.secret}") String secret,
+                   @Value("${jwt.expiration-ms}") long expirationMs) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expirationMs = expirationMs;
+    }
 
     public String generateToken(User user) {
         return Jwts.builder()
                 .setSubject(user.getUsername())
+                .claim("role", user.getRole() != null ? user.getRole().name() : null)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
+    /** Returns the username in the token, or null if the token is invalid or expired. */
     public String extractUsername(String token) {
-        try {
-            return Jwts.parserBuilder()
-                    .setSigningKey(key)
-                    .build()
-                    .parseClaimsJws(token)
-                    .getBody()
-                    .getSubject();
-        } catch (Exception e) {
-            System.out.println("ERROR: Unable to extract username from token - " + e.getMessage());
-            return null;
-        }
+        Claims claims = parseClaims(token);
+        return claims != null ? claims.getSubject() : null;
     }
 
     public boolean validateToken(String token, UserDetails userDetails) {
-        try {
-            String username = extractUsername(token);
-            return username != null && username.equals(userDetails.getUsername()) && !isTokenExpired(token);
-        } catch (Exception e) {
-            System.out.println("ERROR: Token validation failed - " + e.getMessage());
-            return false;
-        }
+        Claims claims = parseClaims(token);
+        return claims != null
+                && userDetails.getUsername().equals(claims.getSubject())
+                && claims.getExpiration().after(new Date());
     }
 
-    public boolean isTokenExpired(String token) {
+    private Claims parseClaims(String token) {
         try {
-            return extractExpiration(token).before(new Date());
-        } catch (Exception e) {
-            return true; // If token parsing fails, assume expired
+            return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+        } catch (JwtException | IllegalArgumentException e) {
+            log.debug("Invalid JWT: {}", e.getMessage());
+            return null;
         }
-    }
-
-    private Date extractExpiration(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getExpiration();
     }
 }
