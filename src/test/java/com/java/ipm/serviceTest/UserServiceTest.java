@@ -10,6 +10,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -57,10 +58,9 @@ class UserServiceTest {
         authRequest.setUsername("john_doe");
         authRequest.setPassword("password");
         authRequest.setEmail("john@example.com");
-        authRequest.setRole(com.java.ipm.domain.Role.USER);
     }
 
-    // ✅ Test successful registration
+    // Test successful registration
     @Test
     void register_Success() {
         when(userRepository.findByUsername(authRequest.getUsername())).thenReturn(Optional.empty());
@@ -68,19 +68,39 @@ class UserServiceTest {
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         String response = userService.register(authRequest);
-        assertEquals("User register successfully...!", response);
+        assertEquals("User registered successfully", response);
     }
 
-    // ❌ Test registration failure when username already exists
+    @Test
+    void register_AlwaysAssignsUserRole() {
+        when(userRepository.findByUsername(authRequest.getUsername())).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(authRequest.getPassword())).thenReturn("encodedPassword");
+
+        userService.register(authRequest);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertEquals(com.java.ipm.domain.Role.USER, saved.getValue().getRole());
+        assertEquals("encodedPassword", saved.getValue().getPassword());
+    }
+
+    @Test
+    void register_Failure_EmailMissing() {
+        authRequest.setEmail(null);
+
+        Exception exception = assertThrows(IllegalArgumentException.class, () -> userService.register(authRequest));
+        assertEquals("Email is required", exception.getMessage());
+    }
+
     @Test
     void register_Failure_UsernameExists() {
         when(userRepository.findByUsername(authRequest.getUsername())).thenReturn(Optional.of(testUser));
 
         Exception exception = assertThrows(RuntimeException.class, () -> userService.register(authRequest));
-        assertEquals("Username already exist", exception.getMessage());
+        assertEquals("Username already exists", exception.getMessage());
     }
 
-    // ✅ Test successful login
+    // Test successful login
     @Test
     void login_Success() {
         when(userRepository.findByUsername(authRequest.getUsername())).thenReturn(Optional.of(testUser));
@@ -91,7 +111,6 @@ class UserServiceTest {
         assertEquals("mocked-jwt-token", response.getToken());
     }
 
-    // ❌ Test login failure when user is not found
     @Test
     void login_Failure_UserNotFound() {
         when(userRepository.findByUsername(authRequest.getUsername())).thenReturn(Optional.empty());
@@ -100,7 +119,7 @@ class UserServiceTest {
         assertEquals("User not found", exception.getMessage());
     }
 
-    // ✅ Test get all users
+    // Test get all users
     @Test
     void getAllUsers_Success() {
         List<User> users = Arrays.asList(testUser, new User());
