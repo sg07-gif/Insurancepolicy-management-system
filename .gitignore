@@ -31,3 +31,15 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Eclipse ###
+.metadata/
+bin/
+.recommenders/
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+*.log
